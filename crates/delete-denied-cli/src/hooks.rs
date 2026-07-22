@@ -81,22 +81,64 @@ pub fn merge_user_hooks(
     registration: &HookRegistration,
 ) -> Result<String, HookConfigError> {
     let mut document = parse_document(original)?;
-    if contains_in_value(&document, registration)? {
-        return render(document);
-    }
-
     let hooks = hooks_object_mut(&mut document)?;
     let pre_tool_use =
         event_array_mut(hooks, true)?.ok_or(HookConfigError::InvalidShape("hooks.PreToolUse"))?;
-    pre_tool_use.push(json!({
-        "matcher": MATCHER,
-        "hooks": [{
-            "type": "command",
-            "command": registration.command,
-            "timeout": TIMEOUT_SECONDS,
-            "statusMessage": STATUS_MESSAGE
-        }]
-    }));
+    let mut effective_found = false;
+    for group in pre_tool_use.iter_mut() {
+        let group_object = group
+            .as_object_mut()
+            .ok_or(HookConfigError::InvalidShape("hooks.PreToolUse[]"))?;
+        let matcher = group_object
+            .get("matcher")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_owned();
+        let Some(handlers) = group_object.get_mut("hooks") else {
+            continue;
+        };
+        let handlers = handlers
+            .as_array_mut()
+            .ok_or(HookConfigError::InvalidShape("hooks.PreToolUse[].hooks"))?;
+        handlers.retain(|handler| {
+            if !owned_handler_matches(handler, registration) {
+                return true;
+            }
+            if !effective_found && effective_handler_matches(&matcher, handler, registration) {
+                effective_found = true;
+                true
+            } else {
+                false
+            }
+        });
+    }
+
+    if !effective_found {
+        let mut appended = false;
+        for group in pre_tool_use.iter_mut() {
+            let group_object = group
+                .as_object_mut()
+                .ok_or(HookConfigError::InvalidShape("hooks.PreToolUse[]"))?;
+            if group_object.get("matcher").and_then(Value::as_str) != Some(MATCHER) {
+                continue;
+            }
+            let Some(handlers) = group_object.get_mut("hooks") else {
+                continue;
+            };
+            let handlers = handlers
+                .as_array_mut()
+                .ok_or(HookConfigError::InvalidShape("hooks.PreToolUse[].hooks"))?;
+            handlers.push(canonical_registration_handler(registration));
+            appended = true;
+            break;
+        }
+        if !appended {
+            pre_tool_use.push(json!({
+                "matcher": MATCHER,
+                "hooks": [canonical_registration_handler(registration)]
+            }));
+        }
+    }
     render(document)
 }
 
@@ -120,7 +162,7 @@ pub fn remove_user_hook(
         let Some(handlers) = handlers.as_array_mut() else {
             return Err(HookConfigError::InvalidShape("hooks.PreToolUse[].hooks"));
         };
-        handlers.retain(|handler| !handler_matches(handler, registration));
+        handlers.retain(|handler| !owned_handler_matches(handler, registration));
     }
     pre_tool_use.retain(|group| {
         let Some(object) = group.as_object() else {
@@ -179,7 +221,7 @@ pub fn hook_identity(
             .as_array()
             .ok_or(HookConfigError::InvalidShape("hooks.PreToolUse[].hooks"))?;
         for (handler_index, handler) in handlers.iter().enumerate() {
-            if !handler_matches(handler, registration) {
+            if !effective_handler_matches(matcher, handler, registration) {
                 continue;
             }
             let canonical = canonical_hook(matcher, handler, registration);
@@ -339,9 +381,10 @@ fn contains_in_value(
         let handlers = handlers
             .as_array()
             .ok_or(HookConfigError::InvalidShape("hooks.PreToolUse[].hooks"))?;
+        let matcher = group.get("matcher").and_then(Value::as_str).unwrap_or("");
         if handlers
             .iter()
-            .any(|handler| handler_matches(handler, registration))
+            .any(|handler| effective_handler_matches(matcher, handler, registration))
         {
             return Ok(true);
         }
@@ -349,9 +392,33 @@ fn contains_in_value(
     Ok(false)
 }
 
-fn handler_matches(handler: &Value, registration: &HookRegistration) -> bool {
+fn owned_handler_matches(handler: &Value, registration: &HookRegistration) -> bool {
     handler.get("type").and_then(Value::as_str) == Some("command")
         && handler.get("command").and_then(Value::as_str) == Some(registration.command.as_str())
+}
+
+fn effective_handler_matches(
+    matcher: &str,
+    handler: &Value,
+    registration: &HookRegistration,
+) -> bool {
+    matcher == MATCHER
+        && owned_handler_matches(handler, registration)
+        && handler
+            .get("async")
+            .is_none_or(|value| value.as_bool() == Some(false))
+        && handler
+            .get("timeout")
+            .is_none_or(|value| value.as_u64().is_some_and(|timeout| timeout > 0))
+}
+
+fn canonical_registration_handler(registration: &HookRegistration) -> Value {
+    json!({
+        "type": "command",
+        "command": registration.command,
+        "timeout": TIMEOUT_SECONDS,
+        "statusMessage": STATUS_MESSAGE
+    })
 }
 
 fn render(document: Value) -> Result<String, HookConfigError> {

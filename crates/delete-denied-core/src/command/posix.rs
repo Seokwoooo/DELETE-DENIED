@@ -545,10 +545,10 @@ fn fast_segment_suspicious(
         return true;
     }
     if fast_supported_name(command, words[command_index], "find") {
-        return fast_find_delete(command, words, command_index);
+        return fast_find_delete(command, words, command_index, unbalanced, nested_depth);
     }
     if fast_supported_name(command, words[command_index], "xargs") {
-        return fast_xargs_rm(command, words, command_index);
+        return fast_xargs_rm(command, words, command_index, unbalanced, nested_depth);
     }
     if fast_supported_name(command, words[command_index], "rsync") {
         return words.iter().skip(command_index + 1).any(|word| {
@@ -794,15 +794,34 @@ fn fast_nested_shell_suspicious(
     false
 }
 
-fn fast_find_delete(command: &str, words: &[FastWord], command_index: usize) -> bool {
+fn fast_find_delete(
+    command: &str,
+    words: &[FastWord],
+    command_index: usize,
+    unbalanced: bool,
+    nested_depth: usize,
+) -> bool {
     let mut in_exec = false;
+    let mut exec_start = 0usize;
     let mut pending = false;
     let mut root_count = 0usize;
     let mut expression_started = false;
-    for word in words.iter().skip(command_index + 1) {
+    for (index, word) in words.iter().enumerate().skip(command_index + 1) {
         let value = fast_word_text(command, *word);
         if in_exec {
-            if value == ";" || value == "+" || fast_word_matches(command, *word, ";") {
+            if value == ";"
+                || value == "+"
+                || fast_word_matches(command, *word, ";")
+                || fast_word_matches(command, *word, "+")
+            {
+                if fast_find_exec_suspicious(
+                    command,
+                    &words[exec_start..index],
+                    unbalanced,
+                    nested_depth,
+                ) {
+                    return true;
+                }
                 in_exec = false;
             }
             continue;
@@ -824,6 +843,7 @@ fn fast_find_delete(command: &str, words: &[FastWord], command_index: usize) -> 
         }
         if matches!(value, "-exec" | "-execdir" | "-ok" | "-okdir") {
             in_exec = true;
+            exec_start = index + 1;
             expression_started = true;
             continue;
         }
@@ -843,10 +863,49 @@ fn fast_find_delete(command: &str, words: &[FastWord], command_index: usize) -> 
             expression_started = true;
         }
     }
+    in_exec && fast_find_exec_suspicious(command, &words[exec_start..], unbalanced, nested_depth)
+}
+
+fn fast_find_exec_suspicious(
+    command: &str,
+    words: &[FastWord],
+    unbalanced: bool,
+    nested_depth: usize,
+) -> bool {
+    let Some(command_index) = fast_command_position(command, words) else {
+        return !words.is_empty();
+    };
+    if words[command_index].dynamic || words.iter().any(|word| word.opaque) {
+        return true;
+    }
+    if fast_supported_name(command, words[command_index], "rm")
+        || fast_supported_name(command, words[command_index], "rmdir")
+        || fast_supported_name(command, words[command_index], "unlink")
+    {
+        return true;
+    }
+    if ["bash", "sh", "zsh", "dash"]
+        .iter()
+        .any(|name| fast_supported_name(command, words[command_index], name))
+    {
+        return fast_nested_shell_suspicious(
+            command,
+            words,
+            command_index,
+            unbalanced,
+            nested_depth,
+        );
+    }
     false
 }
 
-fn fast_xargs_rm(command: &str, words: &[FastWord], command_index: usize) -> bool {
+fn fast_xargs_rm(
+    command: &str,
+    words: &[FastWord],
+    command_index: usize,
+    unbalanced: bool,
+    nested_depth: usize,
+) -> bool {
     let mut index = command_index + 1;
     while index < words.len() {
         let value = fast_word_text(command, words[index]);
@@ -863,9 +922,19 @@ fn fast_xargs_rm(command: &str, words: &[FastWord], command_index: usize) -> boo
             index += 1;
         }
     }
-    words.get(index).is_some_and(|word| {
-        word.dynamic || word.opaque || fast_supported_name(command, *word, "rm")
-    })
+    let Some(word) = words.get(index) else {
+        return false;
+    };
+    if word.dynamic || word.opaque || fast_supported_name(command, *word, "rm") {
+        return true;
+    }
+    if ["bash", "sh", "zsh", "dash"]
+        .iter()
+        .any(|name| fast_supported_name(command, *word, name))
+    {
+        return fast_nested_shell_suspicious(command, &words[index..], 0, unbalanced, nested_depth);
+    }
+    false
 }
 
 fn fast_git_clean(command: &str, words: &[FastWord], command_index: usize) -> bool {

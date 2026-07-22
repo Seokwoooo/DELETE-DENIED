@@ -181,6 +181,44 @@ fn activation_requires_exact_codex_trust_and_enabled_state() {
 }
 
 #[test]
+fn status_does_not_report_enforced_for_an_ineffective_owned_handler() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "delete-denied-ineffective-status-{}-{unique}",
+        std::process::id()
+    ));
+    let paths = fixture_paths(&root);
+    let lifecycle = Lifecycle::new(paths.clone(), &Artifacts);
+
+    assert_eq!(
+        lifecycle.install().unwrap().status,
+        StatusReport::AwaitingTrust
+    );
+    let hooks = fs::read_to_string(&paths.hooks_path.logical).unwrap();
+    let identity = hook_identity(&hooks, &paths.hooks_path.logical, &registration(&paths))
+        .unwrap()
+        .unwrap();
+    write_codex_state(&paths, &identity.key, &identity.hash, None);
+
+    let mut ineffective: serde_json::Value = serde_json::from_str(&hooks).unwrap();
+    ineffective["hooks"]["PreToolUse"][0]["hooks"][0]["async"] = "not-a-boolean".into();
+    fs::write(
+        &paths.hooks_path.logical,
+        serde_json::to_string_pretty(&ineffective).unwrap(),
+    )
+    .unwrap();
+
+    assert!(!matches!(
+        lifecycle.status().unwrap(),
+        StatusReport::Enforced
+    ));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn codex_hook_identity_matches_known_hash() {
     let command = "\"/Users/alice/.codex/delete-denied/bin/delete-denied-hook\" --policy \"/Users/alice/.codex/delete-denied/policy.json\"";
     let registration = HookRegistration::new(command);

@@ -267,6 +267,26 @@ fn suspicious_protected_target_is_denied_without_stderr() {
 }
 
 #[test]
+fn nested_find_and_xargs_deletes_return_structured_denial() {
+    let fixture = Fixture::new();
+    let binary = Path::new(env!("CARGO_BIN_EXE_delete-denied-hook"));
+    let policy = ["--policy", fixture.policy.to_str().expect("path is UTF-8")];
+
+    for command in [
+        r#"find "$HOME" -exec rm -rf -- {} \;"#,
+        r#"printf '%s\n' x | xargs sh -c 'rm -rf -- "$@"' sh"#,
+    ] {
+        let output = run(binary, &policy, &fixture.hook_json(command));
+        assert_bounded_denial(&output);
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("DD-AMBIGUOUS-RECURSIVE"),
+            "stdout={:?}",
+            output.stdout
+        );
+    }
+}
+
+#[test]
 fn suspicious_project_descendant_is_allowed_silently() {
     let fixture = Fixture::new();
     let binary = Path::new(env!("CARGO_BIN_EXE_delete-denied-hook"));

@@ -335,6 +335,37 @@ fn nested_shells_preserve_deletion_context() {
 }
 
 #[test]
+fn denies_nested_find_and_xargs_shell_deletes_as_ambiguous() {
+    let fixture = Fixture::new();
+    for command in [
+        r#"find "$HOME" -exec rm -rf -- {} \;"#,
+        r#"find "$HOME" -execdir rm -rf -- {} \;"#,
+        r#"find "$HOME" -ok rm -rf -- {} \;"#,
+        r#"find "$HOME" -okdir rm -rf -- {} \;"#,
+        r#"find "$HOME" -execdir sh -c 'rm -rf -- "$1"' sh {} \;"#,
+        r#"printf '%s\n' x | xargs sh -c 'rm -rf -- "$@"' sh"#,
+    ] {
+        fixture.assert_deny(command, &fixture.cwd, DenyCode::AmbiguousRecursive);
+    }
+}
+
+#[test]
+fn denies_find_delete_after_escaped_exec_plus_and_unbalanced_nested_shells() {
+    let fixture = Fixture::new();
+    fixture.assert_deny(
+        r#"find . -exec echo {} \+ -delete"#,
+        &fixture.cwd,
+        DenyCode::AmbiguousRecursive,
+    );
+    for command in [
+        r#"find . -execdir sh -c 'rm -rf -- "$1" sh {} \;"#,
+        r#"printf '%s\n' x | xargs sh -c 'rm -rf -- "$@" sh"#,
+    ] {
+        fixture.assert_deny(command, &fixture.cwd, DenyCode::AmbiguousRecursive);
+    }
+}
+
+#[test]
 fn safe_nested_shell_commands_are_not_suspicious() {
     let fixture = Fixture::new();
     fixture.assert_allow("sh -c 'echo safe'", &fixture.cwd);

@@ -47,6 +47,42 @@ fn fast_scan_finds_posix_delete_commands() {
 }
 
 #[test]
+fn fast_scan_finds_nested_find_and_xargs_deletes_but_allows_literal_commands() {
+    for command in [
+        r#"find "$HOME" -exec rm -rf -- {} \;"#,
+        r#"find "$HOME" -execdir rm -rf -- {} \;"#,
+        r#"find "$HOME" -ok rm -rf -- {} \;"#,
+        r#"find "$HOME" -okdir rm -rf -- {} \;"#,
+        r#"find "$HOME" -execdir sh -c 'rm -rf -- "$1"' sh {} \;"#,
+        r#"printf '%s\n' x | xargs sh -c 'rm -rf -- "$@"' sh"#,
+    ] {
+        suspicious(command);
+    }
+
+    for command in [
+        r#"find . -exec echo "$VALUE" \;"#,
+        r#"printf '%s\n' x | xargs echo"#,
+    ] {
+        safe(command);
+    }
+}
+
+#[test]
+fn fast_scan_finds_find_delete_after_escaped_exec_plus() {
+    suspicious(r#"find . -exec echo {} \+ -delete"#);
+}
+
+#[test]
+fn fast_scan_finds_unbalanced_nested_find_and_xargs_shell_deletes() {
+    for command in [
+        r#"find . -execdir sh -c 'rm -rf -- "$1" sh {} \;"#,
+        r#"printf '%s\n' x | xargs sh -c 'rm -rf -- "$@" sh"#,
+    ] {
+        suspicious(command);
+    }
+}
+
+#[test]
 fn fast_scan_respects_quotes_escapes_and_compound_boundaries() {
     suspicious("rm -- \"folder with spaces\"");
     suspicious("echo ok; rm ./old");
