@@ -28,6 +28,48 @@ fn fast_scan_allows_unrelated_commands_and_words_containing_rm() {
 }
 
 #[test]
+fn fast_scan_allows_read_only_shell_test_compound() {
+    safe(
+        r#"echo "=== hooks.json ==="; if [ -f /Users/example/.codex/hooks.json ]; then stat -f "%N %z bytes" -t "%Y-%m-%d %H:%M:%S" /Users/example/.codex/hooks.json; fi; echo "=== config matches ==="; rg -n -i 'hook|trust|delete-denied' /Users/example/.codex/config.toml > /tmp/delete-denied-config-matches.txt || true"#,
+    );
+    safe(
+        "if test -f /Users/example/.codex/hooks.json; then stat /Users/example/.codex/hooks.json; fi",
+    );
+}
+
+#[test]
+fn fast_scan_keeps_deletion_after_shell_test_suspicious() {
+    for command in [
+        r#"if [ -f /Users/example/.codex/hooks.json ]; then rm -rf "$HOME"; fi"#,
+        r#"if test -f /Users/example/.codex/hooks.json; then rm -rf "$HOME"; fi"#,
+        r#"[ -f /Users/example/.codex/hooks.json ] && rm -rf "$HOME""#,
+        r#"if [ -f "$(rm -rf "$HOME")" ]; then :; fi"#,
+    ] {
+        suspicious(command);
+    }
+}
+
+#[test]
+fn fast_scan_rejects_malformed_bracket_tests() {
+    for command in [
+        r#"if [ -f /Users/example/.codex/hooks.json; then :; fi"#,
+        r#"if [ -f "/Users/example/.codex/hooks.json ]; then :; fi"#,
+        r#"if [ -f x ] > >(rm -rf "$HOME"); then :; fi"#,
+    ] {
+        suspicious(command);
+    }
+}
+
+#[test]
+fn fast_scan_rejects_process_substitution_in_bracket_tests_but_allows_quoted_text() {
+    for command in [r#"[ -f >(rm -rf "$HOME") ]"#, r#"[ -f <(rm -rf "$HOME") ]"#] {
+        suspicious(command);
+    }
+
+    safe(r#"echo '>(not process substitution)'"#);
+}
+
+#[test]
 fn fast_scan_finds_posix_delete_commands() {
     for command in [
         "rm -rf ./build",

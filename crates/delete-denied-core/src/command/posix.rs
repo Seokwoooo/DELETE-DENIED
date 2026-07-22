@@ -355,6 +355,14 @@ fn fast_scan_construct_at_depth(command: &str, nested_depth: usize) -> bool {
                 opaque = true;
                 tilde_position = false;
             }
+            b'<' | b'>' if bytes.get(index + 1) == Some(&b'(') => {
+                if !started {
+                    start = index;
+                }
+                started = true;
+                opaque = true;
+                tilde_position = false;
+            }
             b'*' | b'?' | b'[' | b'{' | b'}' => {
                 if !started {
                     start = index;
@@ -513,6 +521,12 @@ fn fast_segment_suspicious(
     let Some(command_index) = fast_command_position(command, words) else {
         return false;
     };
+    if fast_supported_name(command, words[command_index], "[") {
+        let has_terminal_bracket = words
+            .last()
+            .is_some_and(|word| fast_word_matches(command, *word, "]"));
+        return unbalanced || !has_terminal_bracket;
+    }
     if fast_word_basename(command, words[0]) == "command"
         && words
             .get(1)
