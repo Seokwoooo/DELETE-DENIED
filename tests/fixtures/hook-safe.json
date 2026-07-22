@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "cwd": "/Users/example/project",
+  "permission_mode": "danger-full-access",
+  "tool_input": {
+    "command": "git status"
+  }
+}

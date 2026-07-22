@@ -1,0 +1,22 @@
+[package]
+name = "delete-denied-hook"
+version = "0.2.9"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+delete-denied-core = { path = "../delete-denied-core" }
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_SystemInformation",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_Shell",
+] }

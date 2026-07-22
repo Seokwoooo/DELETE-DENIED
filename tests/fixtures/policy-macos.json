@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "variables": {
+    "HOME": "__ROOT__/Users/alice",
+    "USERPROFILE": "__ROOT__/Users/alice"
+  },
+  "protected_paths": [
+    {
+      "kind": "filesystem-root",
+      "logical": "__ROOT__",
+      "canonical": "__CANONICAL_ROOT__",
+      "case_sensitive": true
+    },
+    {
+      "kind": "users-parent",
+      "logical": "__ROOT__/Users",
+      "canonical": "__CANONICAL_ROOT__/Users",
+      "case_sensitive": true
+    },
+    {
+      "kind": "home",
+      "logical": "${HOME}",
+      "canonical": "__CANONICAL_ROOT__/Users/alice",
+      "case_sensitive": false
+    },
+    {
+      "kind": "documents",
+      "logical": "${HOME}/Documents",
+      "canonical": "__CANONICAL_ROOT__/Users/alice/Documents",
+      "case_sensitive": false
+    },
+    {
+      "kind": "desktop",
+      "logical": "${HOME}/Desktop",
+      "canonical": "__CANONICAL_ROOT__/Users/alice/Desktop",
+      "case_sensitive": false
+    },
+    {
+      "kind": "downloads",
+      "logical": "${HOME}/Downloads",
+      "canonical": "__CANONICAL_ROOT__/Users/alice/Downloads",
+      "case_sensitive": false
+    }
+  ]
+}

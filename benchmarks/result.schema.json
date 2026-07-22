@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DELETE-DENIED hook benchmark result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "os",
+    "architecture",
+    "hook_version",
+    "commit",
+    "build_profile",
+    "timestamp_utc",
+    "iterations",
+    "warmup",
+    "binary_size_bytes",
+    "safe",
+    "suspicious_allow",
+    "suspicious_deny",
+    "peak_rss_bytes",
+    "method",
+    "limitations"
+  ],
+  "properties": {
+    "os": { "type": "string" },
+    "architecture": { "type": "string" },
+    "hook_version": { "type": "string" },
+    "commit": { "type": "string" },
+    "build_profile": { "const": "release" },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "iterations": { "type": "integer", "minimum": 1 },
+    "warmup": { "type": "integer", "minimum": 0 },
+    "binary_size_bytes": { "type": "integer", "minimum": 0 },
+    "safe": { "$ref": "#/$defs/latency" },
+    "suspicious_allow": { "$ref": "#/$defs/latency" },
+    "suspicious_deny": { "$ref": "#/$defs/latency" },
+    "peak_rss_bytes": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "method": { "type": "string", "minLength": 1 },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "latency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["p50_ns", "p95_ns", "max_ns"],
+      "properties": {
+        "p50_ns": { "type": "integer", "minimum": 0 },
+        "p95_ns": { "type": "integer", "minimum": 0 },
+        "max_ns": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

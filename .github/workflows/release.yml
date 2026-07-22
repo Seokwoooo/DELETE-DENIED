@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-14
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-pc-windows-msvc
+            runner: windows-2022
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Select version
+        id: version
+        shell: bash
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build binaries
+        shell: bash
+        run: |
+          rustup target add "${{ matrix.target }}"
+          cargo build --release --locked --target "${{ matrix.target }}" -p delete-denied-cli -p delete-denied-hook
+
+      - name: Package macOS
+        if: runner.os == 'macOS'
+        id: package-macos
+        shell: bash
+        run: |
+          stage="$RUNNER_TEMP/delete-denied-${{ matrix.target }}"
+          archive="$RUNNER_TEMP/delete-denied-${{ steps.version.outputs.value }}-${{ matrix.target }}.tar.gz"
+          mkdir -p "$stage"
+          cp "target/${{ matrix.target }}/release/delete-denied" "$stage/"
+          cp "target/${{ matrix.target }}/release/delete-denied-hook" "$stage/"
+          tar -C "$stage" -czf "$archive" delete-denied delete-denied-hook
+          echo "path=$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        id: package-windows
+        shell: pwsh
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP 'delete-denied-${{ matrix.target }}'
+          $archive = Join-Path $env:RUNNER_TEMP 'delete-denied-${{ steps.version.outputs.value }}-${{ matrix.target }}.zip'
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          Copy-Item 'target/${{ matrix.target }}/release/delete-denied.exe' $stage
+          Copy-Item 'target/${{ matrix.target }}/release/delete-denied-hook.exe' $stage
+          Compress-Archive -Path "$stage/*" -DestinationPath $archive -Force
+          "path=$archive" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-${{ matrix.target }}
+          path: ${{ steps.package-macos.outputs.path || steps.package-windows.outputs.path }}
+
+  publish:
+    name: publish
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd release-assets
+          sha256sum delete-denied-* > SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" ./* --repo "$GITHUB_REPOSITORY" --title "DELETE-DENIED $GITHUB_REF_NAME" --generate-notes

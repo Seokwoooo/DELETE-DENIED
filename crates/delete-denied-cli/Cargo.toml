@@ -1,0 +1,20 @@
+[package]
+name = "delete-denied-cli"
+version = "0.2.9"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "delete-denied"
+path = "src/main.rs"
+
+[dependencies]
+delete-denied-core = { path = "../delete-denied-core" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+toml = "0.8"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

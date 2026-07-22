@@ -1,0 +1,22 @@
+[workspace]
+members = [
+    "crates/delete-denied-core",
+    "crates/delete-denied-hook",
+    "crates/delete-denied-cli",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = true
